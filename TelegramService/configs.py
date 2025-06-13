@@ -13,3 +13,23 @@ class ConfigPostgre:
 
 
 CONFIG_POSTGRE = ConfigPostgre()
+
+
+class ConfigRedis:
+    host: str = os.getenv("REDIS_HOST", None)
+    port: str = os.getenv("REDIS_PORT", None)
+    num_buffer: str = os.getenv("REDIS_NUM_BUFFER", "0")
+    buffer_key: str = os.getenv("REDIS_BUFFER_KEY", "spylog_buffer")
+
+    def __call__(self):
+        return f"redis://{self.host}:{self.port}/{self.num_buffer}"
+
+
+CONFIG_REDIS = ConfigRedis()
+
+
+class ConfigBot:
+    token: str = os.getenv("BOT_TOKEN")
+
+
+CONFIG_BOT = ConfigBot()
