@@ -5,6 +5,7 @@ from typing import Callable, TypeVar, ParamSpec
 import sqlalchemy as sa
 
 from .database import SessionLocal
+from tasks import celery_app
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -72,7 +73,68 @@ def db_update(func: Callable[_P, _R]) -> Callable[_P, _R]:
     return wrapper
 
 
-### ---------------------------------------------------
+# -------- REDIS FLUSH -----------------------------------------------
+
+@celery_app.task
+def flush_logs(batch_size: int = 1000) -> int:
+    """Pop events from Redis and bulk-insert into Postgres via SQLAlchemy.
+
+    Args:
+        batch_size: сколько записей брать за один проход Lua-скрипта.
+    Returns:
+        Итоговое число вставленных строк.
+    """
+
+    total_flushed = 0
+
+    # Lua-скрипт атомарно вытаскивает up-to N элементов списка
+    lua_script = (
+        "local n=tonumber(ARGV[1]);"
+        "local res={};"
+        "for i=1,n do "
+        "  local v=redis.call('lpop', KEYS[1]);"  # FIFO pop
+        "  if not v then return res end;"
+        "  table.insert(res, v);"
+        "end;"
+        "return res;"
+    )
+
+    while True:
+        # 1. Берём пачку json-строк из Redis
+        raw_records = redis_conn.eval(lua_script, 1, BUFFER_KEY, batch_size)
+        if not raw_records:
+            break  # Всё кончилось
+
+        # 2. Преобразуем в ready-to-insert dicts
+        rows = []
+        for raw in raw_records:
+            try:
+                doc = json.loads(raw)
+                if doc.get("user_id") is None:
+                    continue  # пропуск анонимов / системных событий
+                rows.append(
+                    {
+                        "user_id": int(doc["user_id"]),
+                        "action": doc,  # хранится как JSONB
+                        "ts": datetime.fromisoformat(doc["iso_ts"]),
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WARN] corrupt log entry dropped: {exc}: {raw}")
+
+        if not rows:
+            continue
+
+        # 3. Одним батчем пишем через SQLAlchemy Core (быстрее ORM add_all)
+        with SessionLocal() as session:
+            session.execute(insert(SpyLog), rows)
+            session.commit()
+            total_flushed += len(rows)
+
+    return total_flushed
+
+
+# -------- QUERIES ---------------------------------------------------
 
 @db_update
 def add_user(session, name: str):
