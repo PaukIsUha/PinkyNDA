@@ -7,6 +7,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from datetime import datetime, timezone
 import json
+from log_handle import log
 
 
 CELERY_BROKER = CONFIG_REDIS()
@@ -42,7 +43,7 @@ def log_event(event_name: str) -> Callable[[Callable[..., Awaitable[Any]]], Call
                 await redis_conn.rpush(CONFIG_REDIS.buffer_key, json.dumps(payload))
             except Exception as exc:  # noqa: BLE001
                 # In prod: log exception via sentry / stderr
-                print(f"[WARN] failed to push log to redis: {exc}")
+                log.warning(f"[WARN] failed to push log to redis: {exc}")
             # Call real handler
             return await func(update, context, *args, **kwargs)
 
