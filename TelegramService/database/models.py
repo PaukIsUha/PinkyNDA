@@ -23,7 +23,9 @@ class UserHub(Base):
     tstart: Mapped[dt.datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()
     )
-    balance: Mapped[Optional[int]] = mapped_column(Integer)
+    balance: Mapped[Optional[int]] = mapped_column(
+        Integer, server_default="0", nullable=False
+    )
     is_reg: Mapped[bool] = mapped_column(
         Boolean, server_default="false", nullable=False
     )

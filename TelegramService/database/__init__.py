@@ -6,4 +6,7 @@ from .models import (
     Task,
     SpyLog,
 )
-from .queries import db_query, db_update
+from .queries import (
+    new_user,
+    user_reg,
+)

@@ -3,7 +3,7 @@ CREATE TABLE userhub (
     id            INT PRIMARY KEY,
     name          TEXT,
     tstart        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    balance       INT,
+    balance       INT DEFAULT 0,
     is_reg        BOOLEAN  DEFAULT FALSE,
     refferer_id   INT,
     CONSTRAINT fk_userhub_refferer

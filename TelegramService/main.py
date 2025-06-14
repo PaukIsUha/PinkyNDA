@@ -19,6 +19,7 @@ from telegram.ext import (
 )
 from tasks import log_event
 from configs import CONFIG_BOT
+from log_handle import log
 
 
 ###############################################################################
@@ -64,6 +65,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return  # Игнорируем повторные /start
 
     user_data["started"] = True
+    log.info(f"CLICKED /start --- id: {update.effective_user.id}, name: {update.effective_user.username}")
+    db.new_user(id=update.effective_user.id, name=update.effective_user.username)
 
     await update.message.reply_html(
         "<b>Привет! Я Pinky – твоя digital-подруга 💕 Давай знакомиться?</b>",
@@ -73,6 +76,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @log_event("about_me")
 async def about_me(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info(f"CLICKED about_me --- id: {update.effective_user.id}, name: {update.effective_user.username}")
+
     query = update.callback_query
     await query.answer()
     if query.message:
@@ -87,6 +92,8 @@ async def about_me(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @log_event("what_i_do")
 async def what_i_do(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info(f"CLICKED what_i_do --- id: {update.effective_user.id}, name: {update.effective_user.username}")
+
     query = update.callback_query
     await query.answer()
     if query.message:
@@ -103,6 +110,8 @@ async def what_i_do(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @log_event("register")
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info(f"CLICKED register --- id: {update.effective_user.id}, name: {update.effective_user.username}")
+
     query = update.callback_query
     await query.answer()
     if query.message:
@@ -119,10 +128,14 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @log_event("agree")
 async def agree(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info(f"CLICKED agree --- id: {update.effective_user.id}, name: {update.effective_user.username}")
+
     query = update.callback_query
     await query.answer()
     if query.message:
         await query.edit_message_reply_markup(reply_markup=None)
+
+    db.user_reg(id=update.effective_user.id)
 
     await query.message.reply_text(
         "Привет, выбери чем бы ты хотела заняться сегодня ?\n\nВыбери вариант внизу или просто напиши в чат.",
@@ -169,4 +182,5 @@ def build_app() -> Application:
 
 if __name__ == "__main__":
     application = build_app()
+    log.info(f"Start pooling...")
     application.run_polling(allowed_updates=["message", "callback_query"])
