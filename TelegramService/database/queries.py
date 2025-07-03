@@ -5,7 +5,9 @@ from typing import Callable, TypeVar, ParamSpec
 import sqlalchemy as sa
 
 from .database import SessionLocal
+from .models import *
 from tasks import celery_app
+from log_handle import log
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -137,5 +139,16 @@ def flush_logs(batch_size: int = 1000) -> int:
 # -------- QUERIES ---------------------------------------------------
 
 @db_update
-def add_user(session, name: str):
-    session.add(UserHub(name=name, is_reg=True))
+def new_user(session, id: int, name: str):
+    session.add(UserHub(id=id, name=name))
+    log.info(f"INSERT POSTGRESQL UserHub --- id: {id}, name: {name}")
+
+
+@db_update
+def user_reg(session, id: int):
+    user: UserHub | None = session.get(UserHub, id)
+    if user is None:
+        raise ValueError(f"UserHub(id={id}) not found")
+
+    user.is_reg = True
+    log.info(f"UPDATE POSTGRESQL UserHub --- id: {id}, is_reg={True}")
