@@ -1,0 +1,8 @@
+services:
+  bot:
+    build: .
+    container_name: pinky_tg_bot
+    restart: always            # автоматический перезапуск при сбоях
+    environment:
+      - BOT_TOKEN=123456:ABCDEF...
+      - API_BASE_URL=http://api:8000
