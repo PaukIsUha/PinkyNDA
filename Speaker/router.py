@@ -3,10 +3,11 @@ import os
 from dotenv import load_dotenv
 from fastapi import APIRouter
 from openai import AsyncOpenAI
-from typing import Dict, Any
+from typing import Optional, Dict, Any
 
 from prompts import topic_system_prompts, CLASSIFIER_PROMPT_TEMPLATE, CLASSIFIER_SYSTEM_PROMPT
 from utils import form_messages, encode_image
+from pydantic import BaseModel
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -16,6 +17,18 @@ client = AsyncOpenAI(api_key=API_KEY)
 router = APIRouter(
     prefix='/chat_ai'
 )
+
+
+class InferenceRequest(BaseModel):
+    query: str
+    topic: str
+    base64_image: Optional[str] = None
+
+
+class ValidationRequest(BaseModel):
+    query: str
+    chosen_topic: str
+    base64_image: Optional[str] = None
 
 
 @router.post("/pipeline")
@@ -73,69 +86,62 @@ async def pipeline_example(chosen_topic: str,
 
 
 @router.post("/general_inference")
-async def general_inference(query: str, topic: str, base64_image: str | None = None) -> Dict[str, Any]:
+async def general_inference(payload: InferenceRequest) -> Dict[str, Any]:
     """
-    Выполняет основной запрос к GPT, topic отвечает за выбор системного промпта.
-    
-    Args:
-        query (str): Текстовый запрос пользователя
-        topic (str): Тема для системного промпта
-        base64_image (str | None): Закодированное изображение
-    
-    Returns:
-        response_text: Ответ ИИ
+    Выполняет основной запрос к GPT.
+
+    Тело запроса:
+    {
+        "query": "...",
+        "topic": "...",
+        "base64_image": "<опционально>"
+    }
     """
-    topic_system_prompt = topic_system_prompts[topic]
+    topic_system_prompt = topic_system_prompts[payload.topic]
 
     messages = form_messages(
-        base64_image=base64_image,
+        base64_image=payload.base64_image,
         system_prompt=topic_system_prompt,
-        prompt=query
+        prompt=payload.query,
     )
-    
+
     response = await client.responses.create(
         model=MODEL_NAME,
         tools=[{"type": "web_search_preview"}],
         input=messages,
     )
 
-    return {
-        'response_text': response.output_text
-    }
-        
+    return {"response_text": response.output_text}
+
+
+# =========================== VALIDATION =====================================
 
 @router.post("/validation")
-async def check_validity_and_cost(query: str, chosen_topic: str, base64_image: str | None) -> Dict[str, Any]:
+async def check_validity_and_cost(payload: ValidationRequest) -> Dict[str, Any]:
     """
-    Проверяет валидность запроса и определяет:
-    - Вопрос релевантен выбранной теме?
-    - Если не релевантен к какой теме он относится (из имеющихся + "Другое")?
-    - Стоимость ответа в "сердечках"
-    
-    Args:
-        query (str): Текстовый запрос
-        chosen_topic (str): Выбранная пользователем темя
-        base64_image (str | None): Закодированное изображение
-    
-    Returns:
-        is_valid: Валиден ли запрос для исходной темы
-        true_topic: Рекомендуемая тема ('Другое' если не определена)
-        cost: Расчетная стоимость ответа
+    Проверяет валидность запроса и рассчитывает «стоимость».
+
+    Тело запроса:
+    {
+        "chosen_topic": "...",
+        "query": "...",
+        "base64_image": "<опционально>"
+    }
     """
     messages = form_messages(
-        base64_image=base64_image,
+        base64_image=payload.base64_image,
         system_prompt=CLASSIFIER_SYSTEM_PROMPT,
         prompt=CLASSIFIER_PROMPT_TEMPLATE.format(
-            query=query,
-            topic=chosen_topic
-        )
+            query=payload.query,
+            topic=payload.chosen_topic,
+        ),
     )
 
     response = await client.responses.create(
         model=MODEL_NAME,
         input=messages,
     )
-    
+
     topic_names = [
         "Разбор переписки",
         "Астрология",
@@ -147,20 +153,19 @@ async def check_validity_and_cost(query: str, chosen_topic: str, base64_image: s
 
     try:
         res_dict = json.loads(response.output_text)
-        print(res_dict['true_topic_idx'])
-        if res_dict['true_topic_idx'] != -1:
-            res_dict['true_topic'] = topic_names[res_dict['true_topic_idx'] - 1]
+        if res_dict["true_topic_idx"] != -1:
+            res_dict["true_topic"] = topic_names[res_dict["true_topic_idx"] - 1]
         else:
-            res_dict['true_topic'] = 'Другое'
-    except json.JSONDecodeError as e:
+            res_dict["true_topic"] = "Другое"
+    except (json.JSONDecodeError, KeyError):
         res_dict = {
             "valid": False,
             "true_topic": "Другое",
-            "cost": 2
+            "cost": 2,
         }
 
     return {
-        'is_valid': res_dict['valid'],
-        'true_topic': res_dict['true_topic'],
-        'cost': res_dict['cost']
+        "is_valid": res_dict["valid"],
+        "true_topic": res_dict["true_topic"],
+        "cost": res_dict["cost"],
     }
